@@ -25,7 +25,7 @@ Configuration::
 
     ...
 
-    [mimetype]
+    [permission_mapping]
     blueprint = collective.blueprint.jsonmigrator.permission_mapping
 
 Data in pipeline::
