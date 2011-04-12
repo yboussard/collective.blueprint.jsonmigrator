@@ -21,11 +21,23 @@ from collective.transmogrifier.utils import resolvePackageReferenceOrFile
 
 from Products.CMFCore.utils import getToolByName
 from Products.Archetypes.interfaces import IBaseObject
+from Products.Archetypes.BaseUnit import BaseUnit
 from AccessControl.interfaces import IRoleManager
+from Products.PloneArticle.interfaces import IPloneArticle
+
+## linguaplone migration
+HAVE_LP = None
+try:
+    from Products.LinguaPlone.interfaces import ITranslatable
+    HAVE_LP = True
+except ImportError:
+    HAVE_LP = False
 
 DATAFIELD = '_datafield_'
 STATISTICSFIELD = '_statistics_field_prefix_'
 
+import logging
+logger = logging.getLogger('collective.blueprint.jsonmigrator')
 
 class JSONSource(object):
     """ """
@@ -45,6 +57,7 @@ class JSONSource(object):
             raise Exception, 'Path ('+str(self.path)+') does not exists.'
 
         self.datafield_prefix = options.get('datafield-prefix', DATAFIELD)
+        self.datafield_separator = options.get('datafield-separator', None)
 
     def __iter__(self):
         for item in self.previous:
@@ -57,14 +70,25 @@ class JSONSource(object):
             for item2 in sorted([int(j[:-5])
                                     for j in os.listdir(os.path.join(self.path, str(item3)))
                                         if j.endswith('.json')]):
-
-                f = open(os.path.join(self.path, str(item3), str(item2)+'.json'))
+                json_file_path =  os.path.join(self.path, str(item3),
+                                               str(item2)+'.json')
+                f = open(json_file_path)
+                
                 item = simplejson.loads(f.read())
+                item['_json_file_path'] = json_file_path
                 f.close()
-
                 for key in item.keys():
                     if key.startswith(self.datafield_prefix):
-                        item[key] = os.path.join(self.path, item[key])
+                        
+                        if self.datafield_separator:
+                            
+                            item[key]['path'] = item[key]['path'].replace(\
+                                self.datafield_separator,
+                                os.path.sep)
+                        #file_name = os.path.join(os.path.dirname(item[key]['']
+                        #    os.path.basename(item[key]['path']
+                        item[key]['path'] = os.path.join(self.path,
+                                                         item[key]['path'])
 
                 yield item
 
@@ -480,6 +504,152 @@ class LocalRoles(object):
             yield item
 
 
+class LinguaRelation(object):
+    """ an section about linguaplone """
+
+    classProvides(ISectionBlueprint)
+    implements(ISection)
+
+    def __init__(self, transmogrifier, name, options, previous):
+        self.transmogrifier = transmogrifier
+        self.name = name
+        self.options = options
+        self.previous = previous
+        self.context = transmogrifier.context
+
+        if 'path-key' in options:
+            pathkeys = options['path-key'].splitlines()
+        else:
+            pathkeys = defaultKeys(options['blueprint'], name, 'path')
+        self.pathkey = Matcher(*pathkeys)
+
+        
+
+    def __iter__(self):
+        for item in self.previous:
+            
+            pathkey = self.pathkey(*item.keys())[0]
+            
+            if not pathkey:                     # not enough info
+                yield item; continue
+            if not HAVE_LP:  ## not LinguaPlone
+                yield item; continue
+            #if  'mission' in item[pathkey]:
+            #    import pdb;pdb.set_trace();
+
+            obj = self.context.unrestrictedTraverse(item[pathkey].lstrip('/'), None)
+            if obj is None:                     # path doesn't exist
+                yield item; continue
+            if obj.getLanguage() != item['language']:
+                obj.setLanguage(item['language'])
+            
+            
+            if not ITranslatable.providedBy(obj):
+                yield item; continue ## not a linguaplone object
+            else:
+                canonical_path = item.get('_canonical')
+                language = item.get('language','')
+                if not canonical_path:
+                    yield item; continue
+                try:
+                    canonical = self.context.unrestrictedTraverse(canonical_path.lstrip('/'), None)
+                except:
+                    yield item; continue
+                try:
+                    if not canonical.hasTranslation(language):
+                        canonical.addTranslationReference(obj)
+                        yield item; continue
+                except:
+                    yield item; continue
+
+class PloneArticleFields(object):
+    """ updata data for plonearticle fields """
+    
+    classProvides(ISectionBlueprint)
+    implements(ISection)
+
+    def __init__(self, transmogrifier, name, options, previous):
+        self.transmogrifier = transmogrifier
+        self.name = name
+        self.options = options
+        self.previous = previous
+        self.context = transmogrifier.context
+
+        if 'path-key' in options:
+            pathkeys = options['path-key'].splitlines()
+        else:
+            pathkeys = defaultKeys(options['blueprint'], name, 'path')
+        self.pathkey = Matcher(*pathkeys)
+        self.datafield_separator = options.get('datafield-separator', None)
+
+    def __iter__(self):
+        for item in self.previous:
+            pathkey = self.pathkey(*item.keys())[0]
+            if not pathkey:                     # not enough info
+                yield item; continue
+            #if  item.get('_path') == 'direction-technique-division/administration-finance':
+            #    import pdb;pdb.set_trace();
+                
+            
+
+            obj = self.context.unrestrictedTraverse(item[pathkey].lstrip('/'), None)
+            if obj is None:                     # path doesn't exist
+                yield item; continue
+
+            def getUnit(x, field_name):
+                name = x['id'][0]
+                f_path = x[field_name][0]['data']
+                x = x[field_name][0]
+                if self.datafield_separator:
+                    f_path = f_path.replace(self.datafield_separator,
+                                            os.path.sep)
+                f_name = os.path.basename(f_path)
+                f_path = os.path.join(os.path.dirname(\
+                    item['_json_file_path']),
+                                      f_name)
+                f = open(f_path, mode = 'rb')
+                value = f.read()
+                unit = BaseUnit(name = name,
+                                file = value,
+                                mimetype = x.get('content_type', ''),
+                                filename = x.get('filename', ''),
+                                instance = obj)
+                f.close()
+                return unit
+                        
+                
+                
+            if IPloneArticle.providedBy(obj):
+                
+                if '_plonearticle_images' in item and \
+                       len(item['_plonearticle_images']):
+                    for (i, x) in enumerate(item['_plonearticle_images']) :
+                        unit = getUnit(x,'attachedImage')
+                        item['_plonearticle_images'][i]['attachedImage']=\
+                                                              (unit,{})
+                    obj.getField('images').set(obj,item['_plonearticle_images'])
+                if '_plonearticle_attachments' in item and\
+                       len(item['_plonearticle_attachments']):
+
+                    for (i, x) in enumerate(item['_plonearticle_attachments']):
+                        unit = getUnit(x,'attachedFile')
+                        item['_plonearticle_attachments'][i]['attachedFile'] =\
+                                                                      (unit,{})
+                    obj.getField('files').set(obj,
+                                              item['_plonearticle_attachments'])
+                if '_plonearticle_refs' in item and \
+                       len(item['_plonearticle_refs']):
+                    try:
+                        obj.getField('links').set(obj,
+                                                  item['_plonearticle_refs'])
+                    except:
+                        logger.error('cannot set links for %s %s' % \
+                                     (item['_path'],
+                                     item['_json_file_path'])
+                                     )
+                    
+                        
+                
 class DataFields(object):
     """ """
 
@@ -498,33 +668,44 @@ class DataFields(object):
         else:
             pathkeys = defaultKeys(options['blueprint'], name, 'path')
         self.pathkey = Matcher(*pathkeys)
+        
 
         self.datafield_prefix = options.get('datafield-prefix', DATAFIELD)
 
     def __iter__(self):
         for item in self.previous:
+            
             pathkey = self.pathkey(*item.keys())[0]
-
             if not pathkey:                     # not enough info
                 yield item; continue
+            #if  item.get('_path') == 'direction-technique-division/administration-finance':
+            #    import pdb;pdb.set_trace();
+                
+            
 
             obj = self.context.unrestrictedTraverse(item[pathkey].lstrip('/'), None)
             if obj is None:                     # path doesn't exist
                 yield item; continue
-
+                
             if IBaseObject.providedBy(obj):
                 for key in item.keys():
                     if not key.startswith(self.datafield_prefix):
                         continue
-                    if not os.path.exists(item[key]):
+                    if not os.path.exists(item[key].get('path','')):
                         continue
 
                     fieldname = key[len(self.datafield_prefix):]
                     field = obj.getField(fieldname)
-                    f = open(item[key])
+                    f = open(item[key]['path'],mode='rb')
                     value = f.read()
+                    unit = BaseUnit(name = fieldname,
+                                    file = value,
+                                    mimetype = item[key].get('content_type',''),
+                                    filename = item[key].get('filename',''),
+                                    instance = obj 
+                                    )
                     f.close()
                     if len(value) != len(field.get(obj)):
-                        field.set(obj, value)
+                        field.set(obj, unit)
 
             yield item
