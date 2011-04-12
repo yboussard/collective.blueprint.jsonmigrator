@@ -57,4 +57,14 @@
      name="collective.blueprint.jsonmigrator.datafields"
      />
 
+  <utility
+     component=".blueprint.LinguaRelation"
+     name="collective.blueprint.jsonmigrator.linguarelation"
+     />
+
+    <utility
+     component=".blueprint.PloneArticleFields"
+     name="collective.blueprint.jsonmigrator.plonearticle"
+     />
+
 </configure>

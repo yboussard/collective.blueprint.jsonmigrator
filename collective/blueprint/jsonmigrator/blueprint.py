@@ -587,11 +587,6 @@ class PloneArticleFields(object):
             pathkey = self.pathkey(*item.keys())[0]
             if not pathkey:                     # not enough info
                 yield item; continue
-            #if  item.get('_path') == 'direction-technique-division/administration-finance':
-            #    import pdb;pdb.set_trace();
-                
-            
-
             obj = self.context.unrestrictedTraverse(item[pathkey].lstrip('/'), None)
             if obj is None:                     # path doesn't exist
                 yield item; continue
@@ -678,11 +673,6 @@ class DataFields(object):
             pathkey = self.pathkey(*item.keys())[0]
             if not pathkey:                     # not enough info
                 yield item; continue
-            #if  item.get('_path') == 'direction-technique-division/administration-finance':
-            #    import pdb;pdb.set_trace();
-                
-            
-
             obj = self.context.unrestrictedTraverse(item[pathkey].lstrip('/'), None)
             if obj is None:                     # path doesn't exist
                 yield item; continue
