@@ -1,5 +1,6 @@
 include *.txt
 recursive-include collective/blueprint/jsonmigrator *
 recursive-include export_scripts *
+global-include *.zcml
 global-exclude *pyc
 
