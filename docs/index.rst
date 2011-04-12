@@ -31,6 +31,8 @@ And if you might forgot, migration is a bitch ... so have fun :P
     owner <owner>
     ac_local_roles <ac_local_roles>
     datafields <datafields>
+    plonearticle <plonearticle>
+    linguarelation <linguarelation>
 
 .. _`collective.transmogrifier`: http://pypi.python.org/pypi/collective.transmogrifier
 .. _`Plone`: http://plone.org

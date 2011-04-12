@@ -16,6 +16,12 @@ Expected data structure in pipeline:
     * **_path**: path to object on which we want to change local roles.
     * **_datafield_<field>**: field which needs to store data
 
+Option configuration:
+
+    * datafield-prefix : for changing the prefix (by default _datafield_)
+    * path-key : for changing the path key
+    * datafield-separator : for changing separator of prefix
+
 Example
 -------
 
@@ -38,5 +44,10 @@ Data in pipeline::
 
     {
         "_path": "/Plone/index_html", 
-        "_datafield_attachment": "0/1.json-file-1",
+        "_datafield_attachment": {"filename": "DAF.jpg", 
+                                 "content_type": "image/jpeg", 
+                                 "path": "0\\20.json-file-1", 
+                                 "height": 605, 
+                                 "size": 63912,
+                                 }
     }

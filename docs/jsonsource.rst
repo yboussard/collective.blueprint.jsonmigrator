@@ -11,6 +11,12 @@ Parameters
 
     Also possible to specify in ``some.package:path/to/json/directory`` way.
 
+:path-separator:
+    os path separator use in json file (in case of json file is created on windows) 
+
+:datafield-prefix:
+    prefix for indicate  file fields prefix. Path is transformed by this blue print 
+
 Example
 -------
 
@@ -23,6 +29,8 @@ Configuration::
     [source]
     blueprint = collective.blueprint.jsonmigrator.source
     path = some.package:/path/to/json/dir
+    path-separator = \
+    datafield-prefix = _data_    
 
 JSON files structure::
 
@@ -43,4 +51,7 @@ JSON file::
         "_path": "/Plone/front-page",
         "_type": "Document",
         ...
+        "_data_backgroundImage": {
+             "path": "0\\20.json-file-1", 
+        },
     }
