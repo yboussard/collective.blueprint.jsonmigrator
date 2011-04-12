@@ -9,6 +9,7 @@
 ###############################################################################
 
 import os
+import re
 import shutil
 import ConfigParser
 ### DEPENDENCY 2.0.0 for python2.3
@@ -23,11 +24,14 @@ CONFIG.optionxform = str
 import logging
 logger = logging.getLogger('plone20_export')
 
+PAV3_MODEL_RE = re.compile(r'plonearticle_model([\d]*)')
+
 try:
     #import pdb;pdb.set_trace();
     CONFIG.readfp(open(os.path.join(getConfiguration().instancehome,
                                     'jsonmigrator.ini')))
 except:
+    logger.exception('Please specify ini file jsonmigrator.ini')
     logger.warning('Please specify ini file jsonmigrator.ini in your %s' \
           % getConfiguration().instancehome)
 
@@ -134,6 +138,11 @@ except:
 print 'ID_TO_SKIP %s ' % str(ID_TO_SKIP)
 
 try:
+    MAX_TREAT = int(getconf('MAX_TREAT', 0))
+except:
+    MAX_TREAT = 0
+
+try:
     MAX_CACHE_DB = int(getconf('MAX_CACHE_DB', 500))
 except:
     MAX_CACHE_DB = 500
@@ -178,6 +187,8 @@ def walk(folder):
             logger.info('>> SKIPPING :: ['+item.__class__.__name__+'] '\
                                           + item.absolute_url())
             continue
+        if MAX_TREAT != 0 and COUNTER >= MAX_TREAT:
+            continue
         logger.info('>> TREAT :: ('+ str(COUNTER) +')['+item.__class__.__name__+'] '\
                                           + item.absolute_url())
         yield item
@@ -209,7 +220,7 @@ def write(items):
                  for x in item.Control_Panel.Database.getDatabaseNames()]
         except:
             print "there is an error on %s" % item.absolute_url()
-            import pdb;pdb.set_trace();
+            #import pdb;pdb.set_trace();
             raise
 
 
@@ -227,17 +238,25 @@ def write_to_jsonfile(item):
         for datafield in item['__datafields__']:
             datafield_filepath = os.path.join(SUB_TMPDIR, str(COUNTER)+'.json-file-'+str(datafield_counter))
             f = open(datafield_filepath, 'wb')
-            f.write(item[datafield])
-            item[datafield] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
+            if type(item[datafield]) is dict:
+                f.write(item[datafield]['data'])
+                del item[datafield]['data']
+            else:
+                f.write(item[datafield])
+                item[datafield] = {}
+            #f.write(item[datafield])
+            item[datafield]['path'] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
+            #item[datafield] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
             f.close()
             datafield_counter += 1
         item.pop(u'__datafields__')
     if '_plonearticle_attachments' in item:
         for item2 in item['_plonearticle_attachments']:
+            import pdb;pdb.set_trace();
             datafield_filepath = os.path.join(SUB_TMPDIR, str(COUNTER)+'.json-file-'+str(datafield_counter))
             f = open(datafield_filepath, 'wb')
-            f.write(item2['attachedFile'][0])
-            item2['attachedFile'][0] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
+            f.write(item2['attachedFile'][0]['data'])
+            item2['attachedFile'][0]['data'] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
             f.close()
             datafield_counter += 1
     if '_plonearticle_images' in item:
@@ -245,10 +264,10 @@ def write_to_jsonfile(item):
             datafield_filepath = os.path.join(SUB_TMPDIR, str(COUNTER)+'.json-file-'+str(datafield_counter))
             f = open(datafield_filepath, 'wb')
             try:
-                f.write(item2['attachedImage'][0])
+                f.write(item2['attachedImage'][0]['data'])
             except:
                 import pdb; pdb.set_trace()
-            item2['attachedImage'][0] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
+            item2['attachedImage'][0]['data'] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
             f.close()
             datafield_counter += 1
     
@@ -285,21 +304,22 @@ class BaseWrapper(dict):
         self.obj = obj
 
         self.portal = getToolByName(obj, 'portal_url').getPortalObject()
+        relative_url = getToolByName(obj, 'portal_url').getRelativeContentURL
         self.portal_utils = getToolByName(obj, 'plone_utils')
         self.charset = self.portal.portal_properties.site_properties.default_charset
 
         if not self.charset: # newer seen it missing ... but users can change it
             self.charset = 'utf-8'
-
+        
         self['__datafields__'] = []
-        self['_path'] = '/'.join(self.obj.getPhysicalPath())
-
+        #self['_path'] = '/'.join(self.obj.getPhysicalPath())
+        self['_path'] = relative_url(self.obj)
         self['_type'] = self.obj.__class__.__name__
 
         self['id'] = obj.getId()
         self['title'] = safe_decode(obj.title,self.charset, 'ignore')
         self['description'] = safe_decode(obj.description,self.charset, 'ignore')
-        self['language'] = obj.language
+        self['language'] = obj.Language()
         self['rights'] = safe_decode(obj.rights,self.charset, 'ignore')
         # for DC attrs that are tuples
         for attr in ('subject', 'contributors'):
@@ -332,10 +352,11 @@ class BaseWrapper(dict):
             self['_workflow_history'] = workflow_history
 
         # default view
+        
         if 'layout' in obj.__dict__:
             self['_layout'] = obj.__dict__['layout']
         try:
-            _browser = self.portal_utils.browserDefault(aq_base(obj))[1]
+            _browser = self.plone_utils.browserDefault(aq_base(obj))[1]
         except:
             _browser = None
         if _browser:
@@ -378,6 +399,8 @@ class BaseWrapper(dict):
             for key, val in obj.__ac_local_roles__.items():
                 if key is not None:
                     self['_ac_local_roles'][key] = val
+                    if 'Owner' in val:
+                        self['_owner'] = key
 
         self['_userdefined_roles'] = ()
         if getattr(aq_base(obj), 'userdefined_roles', False):
@@ -401,7 +424,13 @@ class BaseWrapper(dict):
                     self['_permission_mapping'][perm['name']] = \
                          {'acquire': not unchecked,
                           'roles': new_roles}
-
+    
+        if getattr(aq_base(obj), 'isCanonical', False):
+            if not obj.isCanonical():
+                canonical = obj.getCanonical()
+                self['_canonical'] = relative_url(canonical)
+                
+                        
 #        self['_ac_inherited_permissions'] = {}
 #        if getattr(aq_base(obj), 'ac_inherited_permissions', False):
 #            oldmap = getPermissionMapping(obj.ac_inherited_permissions(1))
@@ -409,14 +438,16 @@ class BaseWrapper(dict):
 #                old_p = Permission(key, values, obj)
 #                self['_ac_inherited_permissions'][key] = old_p.getRoles()
 
-        if getattr(aq_base(obj), 'getWrappedOwner', False):
-            self['_owner'] = (1, obj.getWrappedOwner().getId())
-        else:
+        
+
+        #if getattr(aq_base(obj), 'getWrappedOwner', False):
+        #    self['_owner'] = (1, obj.getWrappedOwner().getId())
+        #else:
             # fallback
             # not very nice but at least it works
             # trying to get/set the owner via getOwner(), changeOwnership(...)
             # did not work, at least not with plone 1.x, at 1.0.1, zope 2.6.2
-            self['_owner'] = (0, obj.getOwner(info = 1).getId())
+        #    self['_owner'] = (0, obj.getOwner(info = 1).getId())
 
     def decode(self, s, encodings=('utf8', 'latin1', 'ascii')):
         if self.charset:
@@ -430,7 +461,6 @@ class BaseWrapper(dict):
 
 
 class DocumentWrapper(BaseWrapper):
-    """ An wrapper to an Document. Object must have an text attribute  """
 
     def __init__(self, obj):
         super(DocumentWrapper, self).__init__(obj)
@@ -439,8 +469,7 @@ class DocumentWrapper(BaseWrapper):
 
 
 class I18NFolderWrapper(BaseWrapper):
-    """ An wrapper to an I18NFolder """
-    
+
     def __init__(self, obj):
         super(I18NFolderWrapper, self).__init__(obj)
         # We are ignoring another languages
@@ -469,7 +498,6 @@ class I18NFolderWrapper(BaseWrapper):
 
 
 class LinkWrapper(BaseWrapper):
-    """ An wrapper to ATLink """
 
     def __init__(self, obj):
         super(LinkWrapper, self).__init__(obj)
@@ -477,8 +505,6 @@ class LinkWrapper(BaseWrapper):
 
 
 class NewsItemWrapper(DocumentWrapper):
-    """ An wrapper to NewsItem """
-
 
     def __init__(self, obj):
         super(NewsItemWrapper, self).__init__(obj)
@@ -486,7 +512,6 @@ class NewsItemWrapper(DocumentWrapper):
 
 
 class ListCriteriaWrapper(BaseWrapper):
-    """ An wrapper to ListCriteria """
 
     def __init__(self, obj):
         super(ListCriteriaWrapper, self).__init__(obj)
@@ -496,7 +521,6 @@ class ListCriteriaWrapper(BaseWrapper):
 
 
 class StringCriteriaWrapper(BaseWrapper):
-    """ An wrapper to StringCriteria """
 
     def __init__(self, obj):
         super(StringCriteriaWrapper, self).__init__(obj)
@@ -505,7 +529,6 @@ class StringCriteriaWrapper(BaseWrapper):
 
 
 class SortCriteriaWrapper(BaseWrapper):
-    """ An wrapper to SortStringCriteria """
 
     def __init__(self, obj):
         super(SortCriteriaWrapper, self).__init__(obj)
@@ -514,7 +537,6 @@ class SortCriteriaWrapper(BaseWrapper):
 
 
 class DateCriteriaWrapper(BaseWrapper):
-    """ An wrapper to DateCriteria """
 
     def __init__(self, obj):
         super(DateCriteriaWrapper, self).__init__(obj)
@@ -525,35 +547,29 @@ class DateCriteriaWrapper(BaseWrapper):
 
 
 class FileWrapper(BaseWrapper):
-    """ An wrapper to OFSFile """
-    
-
+    ## fs file ##
     def __init__(self, obj):
-        
         super(FileWrapper, self).__init__(obj)
         self['__datafields__'].append('_datafield_file')
         data = str(obj.data)
         if len(data) != obj.getSize():
-            raise Exception, 'Problem while extracting data for File content type at '+obj.absolute_url()
+             raise Exception, 'Problem while extracting data for File content type at '+obj.absolute_url()
         self['_datafield_file'] = data
 
 
 
 class ImageWrapper(BaseWrapper):
-    """ An wrapper to OFSImage """
-
+    ## fs image ##
     def __init__(self, obj):
-        
         super(ImageWrapper, self).__init__(obj)
         self['__datafields__'].append('_datafield_image')
         data = str(obj.data)
         if len(data) != obj.getSize():
-            raise Exception, 'Problem while extracting data for Image content type at '+obj.absolute_url()
+             raise Exception, 'Problem while extracting data for Image content type at '+obj.absolute_url()
         self['_datafield_image'] = data
 
 
 class EventWrapper(BaseWrapper):
-    """ An wrapper to ATEvent """
 
     def __init__(self, obj):
         super(EventWrapper, self).__init__(obj)
@@ -567,7 +583,6 @@ class EventWrapper(BaseWrapper):
 
 
 class ArchetypesWrapper(BaseWrapper):
-    """ An wrapper to Archetype Object """
 
     def __init__(self, obj):
         
@@ -608,15 +623,22 @@ class ArchetypesWrapper(BaseWrapper):
                     else:
                         self[unicode(field.__name__)] = value.absolute_url()
             elif type_ in ['ImageField', 'FileField', 'AttachmentField']:
+                #import pdb;pdb.set_trace();
                 fieldname = unicode('_data_'+field.__name__)
                 value = field.get(obj)
                 value2 = value
                 if type(value) is not str:
-                    value = str(value.data)
+                    try:
+                        value = str(value.data)
+                    except:
+                        import pdb;pdb.set_trace();
                 if value:
                     
                     self['__datafields__'].append(fieldname)
-                    self[fieldname] = value
+                    self[fieldname] = {}
+                    for x in field.get(obj).__dict__:
+                        self[fieldname][x] = field.get(obj).__dict__[x]
+                    self[fieldname]['data'] = value
 
             elif type_ in ['ComputedField']:
                 pass
@@ -647,7 +669,6 @@ class ArchetypesWrapper(BaseWrapper):
 
 
 class I18NLayerWrapper(ArchetypesWrapper):
-    """ An wrapper to I18N Archetype Object """
 
     def __init__(self, obj):
         super(I18NLayerWrapper, self).__init__(obj)
@@ -691,11 +712,21 @@ def generateUniqueId(type_name=None):
 
     return prefix + time + rand + suffix
 
+
+def getNewModelName(model):
+    re_match = PAV3_MODEL_RE.search(model)
+    if re_match is not None:
+        model = 'pa_model%s' % (re_match.group(1) or '1',)
+    elif model == 'plonearticle_view':
+        model = 'pa_model1'
+    return model
+
+
 class Article322Wrapper(NewsItemWrapper):
-    """ An wrapper to Old Plone Article Object (version<4)"""
 
     def __init__(self, obj):
         super(Article322Wrapper, self).__init__(obj)
+        
         #(Pdb) self.__ordered_attachment_refs__.getItems()
         #['4e952a8c3af4b1bcedf38d475ac6049d']
         d = {'__ordered_attachment_refs__' : ('_plonearticle_attachments',
@@ -711,14 +742,19 @@ class Article322Wrapper(NewsItemWrapper):
                                         'LinkProxy',
                                         'attachedLink',
                                         'getRemoteUrl')}
-                                        
+        ## layout
+
+        model = obj.getModel()
+        self['_layout'] = getNewModelName(model)
+
+        
         ids =  obj.objectIds()
         for x in d:
             slot_name = d[x][0]
             id_name =  d[x][1]
             field_name = d[x][2]
             accessor = d[x][3]
-            setattr(self, slot_name, [])
+            self[slot_name] = []
             for refid in getattr(obj,x).getItems():
                 ref = None
                 try:
@@ -737,12 +773,23 @@ class Article322Wrapper(NewsItemWrapper):
                                                 'ignore'), {}),}
                 if ref.id in ids:
                     ### internal
-                    inner[field_name] = (getattr(ref, accessor)(), {})
+                    innerfile = getattr(ref, accessor)()
+                    if innerfile:
+                        di = {}
+                        try:
+                            data = str(innerfile.data)
+                        except:
+                            import pdb;pdb.set_trace();
+                        for x in innerfile.__dict__:
+                            di[x]  = innerfile.__dict__[x]
+                        di['data'] = data
+                        inner[field_name] = (di, {})
+                                         
                 else:
                     #### external
                     inner['referencedContent'] =  (ref.UID(), {})
-                getattr(self, slot_name).append(inner)
-            
+                self[slot_name].append(inner)
+
                     
                     
                     
@@ -750,7 +797,6 @@ class Article322Wrapper(NewsItemWrapper):
                 
 
 class ArticleWrapper(NewsItemWrapper):
-    """ An wrapper to Plone Article Object (version>=4)"""
 
     def __init__(self, obj):
 
@@ -784,7 +830,6 @@ class ArticleWrapper(NewsItemWrapper):
 
 
 class ZPhotoWrapper(BaseWrapper):
-    """ An wrapper to ZPhoto  """
 
     def __init__(self, obj):
         super(ZPhotoWrapper, self).__init__(obj)
@@ -802,7 +847,6 @@ class ZPhotoWrapper(BaseWrapper):
 
 
 class ZPhotoSlidesWrapper(BaseWrapper):
-    """ An wrapper to ZPhotoSlide  """
 
     def __init__(self, obj):
         super(ZPhotoSlidesWrapper, self).__init__(obj)
@@ -850,7 +894,6 @@ class ZPhotoSlidesWrapper(BaseWrapper):
 
 
 class ContentPanels(BaseWrapper):
-    """ An wrapper to ControlPanel  """
 
     def __init__(self, obj):
         super(ContentPanels, self).__init__(obj)
@@ -858,7 +901,6 @@ class ContentPanels(BaseWrapper):
 
 
 class LocalFSWrapper(BaseWrapper):
-    """ An wrapper to FS object  """
 
     def __init__(self, obj):
         super(LocalFSWrapper, self).__init__(obj)
@@ -866,7 +908,6 @@ class LocalFSWrapper(BaseWrapper):
 
 
 class ZopeObjectWrapper(BaseWrapper):
-    """ An wrapper to Zope object  """
 
     def __init__(self, obj):
         super(ZopeObjectWrapper, self).__init__(obj)
