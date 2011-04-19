@@ -73,8 +73,10 @@ class JSONSource(object):
                 json_file_path =  os.path.join(self.path, str(item3),
                                                str(item2)+'.json')
                 f = open(json_file_path)
-                
-                item = simplejson.loads(f.read())
+                try:
+                    item = simplejson.loads(f.read())
+                except:
+                    logger.exception('error in reading %s' % json_file_path)
                 item['_json_file_path'] = json_file_path
                 f.close()
                 for key in item.keys():
@@ -180,10 +182,6 @@ class Statistics(object):
                 stat += 'TOTAL TIME: %d; ' % (now - self.stats['START_TIME'])
                 stat += 'STEP TIME: %d; ' % (now - self.stats['TIME_LAST_STEP'])
                 self.stats['TIME_LAST_STEP'] = now
-                stat += 'EXISTED: %d; ADDED: %d; NOT-ADDED: %d' % (
-                                               self.stats['EXISTED'],
-                                               self.stats['ADDED'],
-                                               self.stats['NOT-ADDED'])
                 logging.warning(stat)
 
 
@@ -574,7 +572,7 @@ class PloneArticleFields(object):
         self.options = options
         self.previous = previous
         self.context = transmogrifier.context
-
+        
         if 'path-key' in options:
             pathkeys = options['path-key'].splitlines()
         else:
@@ -619,31 +617,69 @@ class PloneArticleFields(object):
                 if '_plonearticle_images' in item and \
                        len(item['_plonearticle_images']):
                     for (i, x) in enumerate(item['_plonearticle_images']) :
-                        unit = getUnit(x,'attachedImage')
-                        item['_plonearticle_images'][i]['attachedImage']=\
-                                                              (unit,{})
-                    obj.getField('images').set(obj,item['_plonearticle_images'])
+                        if 'attachedImage' in x:
+                            
+                            unit = getUnit(x,'attachedImage')
+                            item['_plonearticle_images'][i]['attachedImage']=\
+                                                                      (unit,{})
+                    try:
+                        obj.getField('images').set(obj,item['_plonearticle_images'])
+                    except:
+                        item['_error'] = item['_json_file_path']
+                        logger.error('cannot set images for %s %s' % \
+                                     (item['_path'],
+                                     item['_json_file_path'])
+                                     )
                 if '_plonearticle_attachments' in item and\
                        len(item['_plonearticle_attachments']):
 
                     for (i, x) in enumerate(item['_plonearticle_attachments']):
-                        unit = getUnit(x,'attachedFile')
-                        item['_plonearticle_attachments'][i]['attachedFile'] =\
+                        if 'attachedFile' in x:
+                            unit = getUnit(x,'attachedFile')
+                            item['_plonearticle_attachments'][i]['attachedFile'] =\
                                                                       (unit,{})
-                    obj.getField('files').set(obj,
-                                              item['_plonearticle_attachments'])
+                    try:
+                        obj.getField('files').set(obj,
+                                                  item['_plonearticle_attachments'])
+                    except:
+                        item['_error'] = item['_json_file_path']
+                        logger.error('cannot set files for %s %s' % \
+                                     (item['_path'],
+                                     item['_json_file_path'])
+                                     )
                 if '_plonearticle_refs' in item and \
                        len(item['_plonearticle_refs']):
                     try:
                         obj.getField('links').set(obj,
                                                   item['_plonearticle_refs'])
                     except:
+                        item['_error'] = item['_json_file_path']
                         logger.error('cannot set links for %s %s' % \
                                      (item['_path'],
                                      item['_json_file_path'])
                                      )
-                    
-                        
+            yield item
+
+class ReportError(object):
+    """ """
+    classProvides(ISectionBlueprint)
+    implements(ISection)
+
+    def __init__(self, transmogrifier, name, options, previous):
+        self.transmogrifier = transmogrifier
+        self.name = name
+        self.options = options
+        self.previous = previous
+        self.context = transmogrifier.context
+        path = resolvePackageReferenceOrFile(options['path'])
+        self.error_file = open(path,'w')
+
+    def __iter__(self):
+        for item in self.previous:
+            if '_error' in item:
+                self.error_file.writelines((item['_error'],))
+            yield item
+    
                 
 class DataFields(object):
     """ """

@@ -67,4 +67,11 @@
      name="collective.blueprint.jsonmigrator.plonearticle"
      />
 
+   <utility
+     component=".blueprint.ReportError"
+     name="collective.blueprint.jsonmigrator.reporterror"
+     />
+
+    
+
 </configure>
