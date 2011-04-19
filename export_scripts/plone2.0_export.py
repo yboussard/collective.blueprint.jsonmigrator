@@ -252,15 +252,18 @@ def write_to_jsonfile(item):
         item.pop(u'__datafields__')
     if '_plonearticle_attachments' in item:
         for item2 in item['_plonearticle_attachments']:
-            import pdb;pdb.set_trace();
+            if not item2.has_key('attachedFile'):
+                continue
             datafield_filepath = os.path.join(SUB_TMPDIR, str(COUNTER)+'.json-file-'+str(datafield_counter))
-            f = open(datafield_filepath, 'wb')
-            f.write(item2['attachedFile'][0]['data'])
+            f = open(datafield_filepath, 'wb')            
+            f.write(item2['attachedFile'][0]['data'])            
             item2['attachedFile'][0]['data'] = os.path.join(str(COUNTER/1000), str(COUNTER)+'.json-file-'+str(datafield_counter))
             f.close()
             datafield_counter += 1
     if '_plonearticle_images' in item:
         for item2 in item['_plonearticle_images']:
+            if not item2.has_key('attachedImage'):
+                continue
             datafield_filepath = os.path.join(SUB_TMPDIR, str(COUNTER)+'.json-file-'+str(datafield_counter))
             f = open(datafield_filepath, 'wb')
             try:
@@ -275,7 +278,7 @@ def write_to_jsonfile(item):
     try:
         simplejson.dump(item, f, indent=4)
     except:
-        import pdb;pdb.set_trace();
+        raise str(item)
     f.close()
 
 
@@ -637,7 +640,8 @@ class ArchetypesWrapper(BaseWrapper):
                     self['__datafields__'].append(fieldname)
                     self[fieldname] = {}
                     for x in field.get(obj).__dict__:
-                        self[fieldname][x] = field.get(obj).__dict__[x]
+                        if type(field.get(obj).__dict__[x]) in (int,str):  
+                            self[fieldname][x] = field.get(obj).__dict__[x]
                     self[fieldname]['data'] = value
 
             elif type_ in ['ComputedField']:
@@ -778,10 +782,13 @@ class Article322Wrapper(NewsItemWrapper):
                         di = {}
                         try:
                             data = str(innerfile.data)
+                            for x in innerfile.__dict__:
+                                if type(innerfile.__dict__[x]) in (int,str):
+                                    di[x]  = innerfile.__dict__[x]
                         except:
-                            import pdb;pdb.set_trace();
-                        for x in innerfile.__dict__:
-                            di[x]  = innerfile.__dict__[x]
+                            data = innerfile
+                            
+                        
                         di['data'] = data
                         inner[field_name] = (di, {})
                                          
