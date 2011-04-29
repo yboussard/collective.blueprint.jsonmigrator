@@ -4,7 +4,7 @@ import os
 import simplejson
 import logging
 import transaction
-
+import shutil
 from DateTime import DateTime
 from Acquisition import aq_base
 from ZODB.POSException import ConflictError
@@ -36,7 +36,6 @@ except ImportError:
 DATAFIELD = '_datafield_'
 STATISTICSFIELD = '_statistics_field_prefix_'
 
-import logging
 logger = logging.getLogger('collective.blueprint.jsonmigrator')
 
 class JSONSource(object):
@@ -609,7 +608,16 @@ class PloneArticleFields(object):
                                 instance = obj)
                 f.close()
                 return unit
-                        
+
+            def getReferencedContent(x):
+                path = x['referencedContent'][0]
+                ## we try to get content
+                try:
+                    refobj = self.context.restrictedTraverse(path)
+                    return (refobj.UID(),{})
+                except:
+                    item['_error'] = item['_json_file_path']
+                    logger.exception('we cant set referencedContent for %s' % path)
                 
                 
             if IPloneArticle.providedBy(obj):
@@ -622,14 +630,18 @@ class PloneArticleFields(object):
                             unit = getUnit(x,'attachedImage')
                             item['_plonearticle_images'][i]['attachedImage']=\
                                                                       (unit,{})
+                        elif 'referencedContent' in x:
+                            
+                            item['_plonearticle_images'][i]['referencedContent']=getReferencedContent(x)
                     try:
                         obj.getField('images').set(obj,item['_plonearticle_images'])
                     except:
                         item['_error'] = item['_json_file_path']
-                        logger.error('cannot set images for %s %s' % \
-                                     (item['_path'],
-                                     item['_json_file_path'])
-                                     )
+                        #import pdb;pdb.set_trace();
+                        logger.exception('cannot set images for %s %s' % \
+                                         (item['_path'],
+                                          item['_json_file_path'])
+                                         )
                 if '_plonearticle_attachments' in item and\
                        len(item['_plonearticle_attachments']):
 
@@ -638,26 +650,33 @@ class PloneArticleFields(object):
                             unit = getUnit(x,'attachedFile')
                             item['_plonearticle_attachments'][i]['attachedFile'] =\
                                                                       (unit,{})
+                        elif 'referencedContent' in x:
+                            item['_plonearticle_images'][i]['referencedContent']=getReferencedContent(x)
                     try:
                         obj.getField('files').set(obj,
                                                   item['_plonearticle_attachments'])
                     except:
                         item['_error'] = item['_json_file_path']
-                        logger.error('cannot set files for %s %s' % \
-                                     (item['_path'],
-                                     item['_json_file_path'])
-                                     )
+                        #import pdb;pdb.set_trace();
+                        logger.exception('cannot set files for %s %s' % \
+                                         (item['_path'],
+                                          item['_json_file_path'])
+                                         )
                 if '_plonearticle_refs' in item and \
                        len(item['_plonearticle_refs']):
+                    for (i, x) in enumerate(item['_plonearticle_refs']):
+                        if 'referencedContent' in x:
+                            item['_plonearticle_refs'][i]['referencedContent']=getReferencedContent(x)
                     try:
                         obj.getField('links').set(obj,
                                                   item['_plonearticle_refs'])
                     except:
+                        
                         item['_error'] = item['_json_file_path']
-                        logger.error('cannot set links for %s %s' % \
-                                     (item['_path'],
-                                     item['_json_file_path'])
-                                     )
+                        logger.exception('cannot set links for %s %s' % \
+                                         (item['_path'],
+                                          item['_json_file_path'])
+                                         )
             yield item
 
 class ReportError(object):
@@ -672,12 +691,19 @@ class ReportError(object):
         self.previous = previous
         self.context = transmogrifier.context
         path = resolvePackageReferenceOrFile(options['path'])
+        self.json =  resolvePackageReferenceOrFile(options['json'])
         self.error_file = open(path,'w')
 
     def __iter__(self):
         for item in self.previous:
             if '_error' in item:
-                self.error_file.writelines((item['_error'],))
+                self.error_file.write(item['_error'] + "\n")
+                #shutil.copy(item['_error'], self.json)
+                path = os.path.dirname(item['_error'])
+                for x in (x for x in os.listdir(path) \
+                          if x.startswith(os.path.basename(item['_error']))):
+                    shutil.copy(os.path.join(path, x), self.json)
+                    
             yield item
     
                 
@@ -732,6 +758,14 @@ class DataFields(object):
                                     )
                     f.close()
                     if len(value) != len(field.get(obj)):
-                        field.set(obj, unit)
-
+                        try:
+                            field.set(obj, unit)
+                        except:
+                            item['_error'] = item['_json_file_path']
+                            logger.exception('cannot set file(%s) for %s %s' % \
+                                         (fieldname,
+                                          item['_path'],
+                                          item['_json_file_path'])
+                                         )
+                            
             yield item
