@@ -374,7 +374,7 @@ class Owner(object):
         for item in self.previous:
             pathkey = self.pathkey(*item.keys())[0]
             ownerkey = self.ownerkey(*item.keys())[0]
-
+            import pdb;pdb.set_trace();
             if not pathkey or not ownerkey or \
                ownerkey not in item:    # not enough info
                 yield item; continue
@@ -385,23 +385,16 @@ class Owner(object):
 
             if IBaseObject.providedBy(obj):
 
-                if item[ownerkey][0] and item[ownerkey][1]:
+                if item[ownerkey]:
                     try:
-                        obj.changeOwnership(self.memtool.getMemberById(item[ownerkey][1]))
+                        obj.changeOwnership(self.memtool.getMemberById(item[ownerkey]))
                     except Exception, e:
                         raise Exception('ERROR: %s SETTING OWNERSHIP TO %s' % (str(e), item[pathkey]))
 
                     try:
-                        obj.manage_setLocalRoles(item[ownerkey][1], ['Owner'])
+                        obj.manage_setLocalRoles(item[ownerkey], ['Owner'])
                     except Exception, e:
                         raise Exception('ERROR: %s SETTING OWNERSHIP2 TO %s' % (str(e), item[pathkey]))
-
-                elif not item[ownerkey][0] and item[ownerkey][1]:
-                    try:
-                        obj._owner = item[ownerkey][1]
-                    except Exception, e:
-                        raise Exception('ERROR: %s SETTING __OWNERSHIP TO %s' % (str(e), item[pathkey]))
-
             yield item
 
 
@@ -651,7 +644,7 @@ class PloneArticleFields(object):
                             item['_plonearticle_attachments'][i]['attachedFile'] =\
                                                                       (unit,{})
                         elif 'referencedContent' in x:
-                            item['_plonearticle_images'][i]['referencedContent']=getReferencedContent(x)
+                            item['_plonearticle_attachments'][i]['referencedContent']=getReferencedContent(x)
                     try:
                         obj.getField('files').set(obj,
                                                   item['_plonearticle_attachments'])

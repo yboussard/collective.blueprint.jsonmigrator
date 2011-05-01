@@ -32,10 +32,8 @@ Data in pipeline::
 
     {
         "_path": "/Plone/index_html", 
-        "_owner": [
-            1, 
-            "admin"
-        ],
+        "_owner": "admin"
+ 
     }
 
 
