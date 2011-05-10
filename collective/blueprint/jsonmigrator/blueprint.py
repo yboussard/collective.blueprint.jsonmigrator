@@ -323,7 +323,6 @@ class Properties(object):
             obj = self.context.unrestrictedTraverse(item[pathkey].lstrip('/'), None)
             if obj is None:                 # path doesn't exist
                 yield item; continue
-
             if IBaseObject.providedBy(obj):
                 if getattr(aq_base(obj), '_delProperty', False):
                     for prop in item[propertieskey]:
@@ -356,6 +355,7 @@ class Owner(object):
         self.options = options
         self.previous = previous
         self.context = transmogrifier.context
+        self.acl_users = getToolByName(self.context, 'acl_users')
         self.memtool = getToolByName(self.context, 'portal_membership')
 
         if 'path-key' in options:
@@ -374,7 +374,6 @@ class Owner(object):
         for item in self.previous:
             pathkey = self.pathkey(*item.keys())[0]
             ownerkey = self.ownerkey(*item.keys())[0]
-            import pdb;pdb.set_trace();
             if not pathkey or not ownerkey or \
                ownerkey not in item:    # not enough info
                 yield item; continue
@@ -387,7 +386,7 @@ class Owner(object):
 
                 if item[ownerkey]:
                     try:
-                        obj.changeOwnership(self.memtool.getMemberById(item[ownerkey]))
+                        obj.changeOwnership(self.acl_users.getUserById(item[ownerkey]))
                     except Exception, e:
                         raise Exception('ERROR: %s SETTING OWNERSHIP TO %s' % (str(e), item[pathkey]))
 
@@ -486,6 +485,7 @@ class LocalRoles(object):
                 yield item; continue
 
             if IRoleManager.providedBy(obj):
+                
                 for principal, roles in item[roleskey].items():
                     if roles:
                         obj.manage_addLocalRoles(principal, roles)
