@@ -1,10 +1,13 @@
 
 import time
+import tempfile
 import os
+import os.path
 import simplejson
 import logging
 import transaction
 import shutil
+from PIL import Image
 from DateTime import DateTime
 from Acquisition import aq_base
 from ZODB.POSException import ConflictError
@@ -592,8 +595,30 @@ class PloneArticleFields(object):
                 f_path = os.path.join(os.path.dirname(\
                     item['_json_file_path']),
                                       f_name)
-                f = open(f_path, mode = 'rb')
-                value = f.read()
+                
+                ###
+                ## type2png = image/x-ms-bmp
+                value = ''
+                if x.get('content_type','') in self.options['type2png']:
+                    path = tempfile.mkdtemp()
+                    img = Image.open(f_path)
+                    new_path = os.path.join(path,'image.png')
+                    img.save(new_path)
+                    f = open(new_path, mode = 'rb')
+                    value = f.read()
+                    x['content_type'] =  'image/png'
+                    ext = os.path.splitext(x.get('filename', ''))[-1]
+                    x['filename'] = x.get('filename','').replace(ext, '.png')
+                    try:
+                        os.unlink(path)
+                    except:
+                        pass
+                else:
+                    f = open(f_path, mode = 'rb')
+                    value = f.read()
+   
+
+                
                 unit = BaseUnit(name = name,
                                 file = value,
                                 mimetype = x.get('content_type', ''),
