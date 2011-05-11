@@ -332,6 +332,14 @@ class BaseWrapper(dict):
                 for val in val_tuple:
                     self[attr].append(safe_decode(val,self.charset, 'ignore'))
                 self[attr] = tuple(self[attr])
+        # Creators
+        self['creators'] = []
+        val_tuple = obj.Creators()
+        if val_tuple:
+            for val in val_tuple:
+                self['creators'].append(safe_decode(val,self.charset, 'ignore'))
+                
+        
         # for DC attrs that are DateTimes
         datetimes_dict = {'creation_date': 'creation_date',
                           'modification_date': 'modification_date',
