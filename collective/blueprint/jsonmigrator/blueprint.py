@@ -497,9 +497,7 @@ class LocalRoles(object):
                 for principal, roles in item[roleskey].items():
                     if roles:
                         if principal.startswith(u'group_'):
-                            principal = principal[len(u'group_'):]
                             principal = idnormalizer.normalize(principal)
-                        
                         obj.manage_addLocalRoles(principal, roles)
                 obj.reindexObjectSecurity()
 
