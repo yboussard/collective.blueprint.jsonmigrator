@@ -15,6 +15,9 @@ from ZODB.POSException import ConflictError
 from zope.interface import implements
 from zope.interface import classProvides
 
+from plone.i18n.normalizer import idnormalizer
+
+
 from collective.transmogrifier.interfaces import ISectionBlueprint
 from collective.transmogrifier.interfaces import ISection
 from collective.transmogrifier.utils import Matcher
@@ -489,10 +492,16 @@ class LocalRoles(object):
 
             if IRoleManager.providedBy(obj):
                 
+                if self.options.get('erasebefore'):
+                    obj.__ac_local_roles__ = {}
                 for principal, roles in item[roleskey].items():
                     if roles:
+                        if principal.startswith(u'group_'):
+                            principal = principal[len(u'group_'):]
+                            principal = idnormalizer.normalize(principal)
+                        
                         obj.manage_addLocalRoles(principal, roles)
-                        obj.reindexObjectSecurity()
+                obj.reindexObjectSecurity()
 
             yield item
 
@@ -599,7 +608,7 @@ class PloneArticleFields(object):
                 ###
                 ## type2png = image/x-ms-bmp
                 value = ''
-                if x.get('content_type','') in self.options['type2png']:
+                if x.get('content_type','') in self.options.get('type2png',''):
                     path = tempfile.mkdtemp()
                     img = Image.open(f_path)
                     new_path = os.path.join(path,'image.png')
